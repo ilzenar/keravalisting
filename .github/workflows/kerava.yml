@@ -1,0 +1,53 @@
+name: Kerava apartment watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"     # every ~15 min (GitHub may add a few min delay)
+  workflow_dispatch:            # lets you run it manually from the Actions tab
+
+permissions:
+  contents: write               # so it can save seen.json back to the repo
+
+concurrency:
+  group: kerava-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install "requests>=2.31,<3"
+
+      - name: Make sure seen.json exists
+        run: '[ -f seen.json ] || echo "[]" > seen.json'
+
+      - name: Run watcher
+        env:
+          WHATSAPP_PHONE:   ${{ secrets.WHATSAPP_PHONE }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OIKOTIE_LOCATIONS: ${{ vars.OIKOTIE_LOCATIONS }}
+        run: python kerava_bot.py
+
+      - name: Persist seen listings
+        run: |
+          if [ -n "$(git status --porcelain seen.json)" ]; then
+            git config user.name  "kerava-bot"
+            git config user.email "kerava-bot@users.noreply.github.com"
+            git add seen.json
+            git commit -m "update seen listings [skip ci]"
+            git push
+          else
+            echo "No change to seen.json"
+          fi
+          
