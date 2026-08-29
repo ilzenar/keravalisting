@@ -26,7 +26,7 @@ import requests
 # ==========================================================================
 # --- HARD musts: a listing is dropped if it clearly fails one of these ---
 PRICE_MAX   = 145_000     # € ceiling (velaton / debt-free price)
-PRICE_MIN   = 0
+PRICE_MIN   = 80_000
 SIZE_MIN    = 52          # m²
 SIZE_MAX    = 67          # m²
 MONTHLY_MAX = 360         # € — max total monthly charges (vastike etc.)
