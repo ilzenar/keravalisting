@@ -7,12 +7,10 @@ apartments-for-sale in Kerava that match your criteria, scores each against
 real central-Kerava market prices, and pushes only the NEW matches to your
 WhatsApp — each with a one-tap link that opens your dashboard pre-loaded with
 that listing's numbers.
-
 Runs every ~15 min on GitHub Actions (free). Never notifies the same listing
 twice: seen IDs live in seen.json, committed back by the workflow each run.
 If Etuovi ever fails, Oikotie keeps working — the two sources are independent.
 """
-
 import os
 import re
 import sys
@@ -20,7 +18,6 @@ import json
 import time
 import urllib.parse
 import requests
-
 # ==========================================================================
 # 1. YOUR CRITERIA
 # ==========================================================================
@@ -31,44 +28,35 @@ SIZE_MIN    = 52          # m²
 SIZE_MAX    = 67          # m²
 MONTHLY_MAX = 360         # € — max total monthly charges (vastike etc.)
 REQUIRE_OWN_PLOT = True   # drop listings on a rented plot (vuokratontti)
-
 # Summary listings often DON'T include the fee or plot type — in that case the
 # bot keeps the listing and flags it "❓ verify" rather than dropping it, so you
 # never miss one. It only drops a listing when the data explicitly fails a must.
-
 # --- NICE-TO-HAVE: never filters, only shown as flags in the message ---
 #     sauna, balcony (parveke), pipe renovation (putkiremontti) done.
-
 # Only push listings scored "good" or better? Default False = push every match.
 ONLY_GOOD_OR_BETTER = False
-
 # Optional district filter (case-insensitive). Empty = all of Kerava.
 DISTRICT_KEYWORDS = []     # e.g. ["Keskusta"]
-
 # Your dashboard — each alert links here pre-filled with the listing's numbers.
 DASHBOARD_URL = os.environ.get(
     "DASHBOARD_URL",
     "https://claude.ai/code/artifact/dbf525b6-ca69-487e-8741-73e15c5f06f6")
-
-# Oikotie location selector — VERIFY once (README step 4).
-LOCATIONS = os.environ.get("OIKOTIE_LOCATIONS", '[[1701,4,"Kerava"]]')
-
+# Oikotie location selector. Confirmed via devtools: Kerava = id 137, type 6.
+# Can still be overridden with a repo Variable named OIKOTIE_LOCATIONS.
+LOCATIONS = os.environ.get("OIKOTIE_LOCATIONS", '[{"id":137,"type":6,"name":"Kerava"}]')
 ENABLE_OIKOTIE = True
 ENABLE_ETUOVI  = os.environ.get("ENABLE_ETUOVI", "1") != "0"
-
 # ==========================================================================
 # 2. MARKET BENCHMARK  (keep in sync with the dashboard)
 # ==========================================================================
 MARKET_PPM = 2022
 Z_SUPER, Z_GOOD, Z_MARKET = 1750, 1950, 2150
-
 def classify(ppm):
     if ppm <= Z_SUPER:  return ("SUPER", "\U0001F7E2", "Super deal")
     if ppm <= Z_GOOD:   return ("GOOD",  "\U0001F7E1", "Good value")
     if ppm <= Z_MARKET: return ("MARKET","\U0001F7E0", "At market")
     return ("OVER", "\U0001F534", "Above market")
 RANK = {"SUPER": 3, "GOOD": 2, "MARKET": 1, "OVER": 0}
-
 # ==========================================================================
 # 3. NOTIFICATION CHANNEL (swappable — WhatsApp default)
 # ==========================================================================
@@ -87,7 +75,6 @@ def notify_whatsapp_callmebot(text):
     except Exception as e:
         print(f"!! whatsapp send failed: {e}")
         return False
-
 def notify_telegram(text):
     token = os.environ.get("TELEGRAM_TOKEN", "").strip()
     chat  = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -100,18 +87,15 @@ def notify_telegram(text):
     except Exception as e:
         print(f"!! telegram send failed: {e}")
         return False
-
 def notify(text):
     sent = notify_whatsapp_callmebot(text)
     sent = notify_telegram(text) or sent
     return sent
-
 # ==========================================================================
 # 4. HELPERS
 # ==========================================================================
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
-
 def num(v):
     if v is None: return None
     if isinstance(v, (int, float)): return float(v)
@@ -119,22 +103,19 @@ def num(v):
         for k in ("value", "amount", "price"):
             if k in v: return num(v[k])
         return None
-    s = re.sub(r"[^\d,.\-]", "", str(v)).replace(" ", "").replace(",", ".")
+    s = re.sub(r"[^\d,.\-]", "", str(v)).replace(" ", "").replace(",", ".")
     s = re.sub(r"\.(?=\d{3}\b)", "", s)   # strip thousands dots
     try: return float(s)
     except ValueError: return None
-
 SAUNA_RE = re.compile(r"\bsauna\w*", re.I)
 BALC_RE  = re.compile(r"\b(parvek\w*|balcony)", re.I)
 PIPE_RE  = re.compile(r"\b(putkiremont\w*|linjasaneeraus|putkisaneeraus)", re.I)
 RENT_PLOT_RE = re.compile(r"vuokratont\w*|vuokrattu\s+tontti|tontti\W+vuokra", re.I)
 OWN_PLOT_RE  = re.compile(r"oma\s+tontti|omistustont\w*", re.I)
-
 # ==========================================================================
 # 5. SOURCE: OIKOTIE  (internal cards JSON API)
 # ==========================================================================
 OIKO = "https://asunnot.oikotie.fi"
-
 def oikotie_tokens(session):
     r = session.get(OIKO + "/", headers={"User-Agent": UA}, timeout=30)
     r.raise_for_status()
@@ -147,7 +128,6 @@ def oikotie_tokens(session):
     if not all(t.values()):
         raise RuntimeError("Oikotie tokens not found — their front-page markup may have changed.")
     return t
-
 def fetch_oikotie(session):
     t = oikotie_tokens(session)
     params = {
@@ -156,6 +136,7 @@ def fetch_oikotie(session):
         "size[min]": SIZE_MIN, "size[max]": SIZE_MAX,
         "sortBy": "published_sort_desc", "limit": 50, "offset": 0,
     }
+    print(f"   oikotie: requesting with locations={LOCATIONS!r}")
     r = session.get(OIKO + "/api/cards", headers={"User-Agent": UA, "Accept": "application/json", **t},
                     params=params, timeout=30)
     r.raise_for_status()
@@ -174,17 +155,16 @@ def fetch_oikotie(session):
             "price": num(c.get("price")),
             "size": num(c.get("size") or c.get("area")),
             "address": (loc.get("address") if isinstance(loc, dict) else None) or c.get("roomConfiguration") or "Kerava",
+            "city": (loc.get("city") if isinstance(loc, dict) else None) or "",
             "monthly": num(c.get("maintenanceFee") or c.get("totalHousingCharge")),
             "text": " ".join(text_parts),
             "url": c.get("url") or (f"{OIKO}/myytavat-asunnot/kerava/{cid}" if cid else OIKO),
         })
     return out
-
 # ==========================================================================
 # 6. SOURCE: ETUOVI  (best-effort; parses the SSR data in the page)
 # ==========================================================================
 ETUOVI = "https://www.etuovi.com"
-
 def _walk_listings(node, found):
     """Recursively collect dicts that look like property listings."""
     if isinstance(node, dict):
@@ -199,7 +179,6 @@ def _walk_listings(node, found):
     elif isinstance(node, list):
         for v in node:
             _walk_listings(v, found)
-
 def fetch_etuovi(session):
     url = ETUOVI + "/myytavat-asunnot/kerava"
     r = session.get(url, headers={"User-Agent": UA, "Accept-Language": "fi"}, timeout=30)
@@ -222,7 +201,6 @@ def fetch_etuovi(session):
     except Exception as e:
         print(f"   etuovi: could not parse embedded JSON ({e}).")
         return []
-
     found = []
     _walk_listings(data, found)
     out = []
@@ -243,13 +221,13 @@ def fetch_etuovi(session):
             "id": "etuovi:" + fid,
             "price": price, "size": size,
             "address": addr or "Kerava",
+            "city": "",
             "monthly": num(c.get("maintenanceCharge") or c.get("financialCharge") or c.get("totalCharge")),
             "text": text,
             "url": f"{ETUOVI}/kohde/{fid}",
         })
     print(f"   etuovi: parsed {len(out)} listing(s) from embedded data.")
     return out
-
 # ==========================================================================
 # 7. EVALUATE / MESSAGE
 # ==========================================================================
@@ -257,7 +235,6 @@ def plot_status(text):
     if RENT_PLOT_RE.search(text): return "rent"
     if OWN_PLOT_RE.search(text):  return "own"
     return "unknown"
-
 def evaluate(item):
     price, size = item.get("price"), item.get("size")
     if not price or not size or size <= 0:
@@ -269,7 +246,6 @@ def evaluate(item):
     text = item.get("text", "")
     if DISTRICT_KEYWORDS and not any(k.lower() in text.lower() for k in DISTRICT_KEYWORDS):
         return None
-
     # MUST: own plot — drop only if explicitly rented
     plot = plot_status(text)
     if REQUIRE_OWN_PLOT and plot == "rent":
@@ -278,7 +254,6 @@ def evaluate(item):
     monthly = item.get("monthly")
     if monthly is not None and monthly > MONTHLY_MAX:
         return None
-
     ppm = price / size
     key, emoji, label = classify(ppm)
     return {
@@ -288,17 +263,14 @@ def evaluate(item):
         "balcony": bool(BALC_RE.search(text)),
         "pipes": bool(PIPE_RE.search(text)),
     }
-
 def dashboard_link(m):
     q = {"price": int(round(m["price"])), "size": round(m["size"], 1),
          "addr": m["address"][:60]}
     if m.get("monthly"):
         q["fee"] = int(round(m["monthly"]))
     return DASHBOARD_URL + "?" + urllib.parse.urlencode(q)
-
 def yn(flag, yes, unknown="❓"):
     return yes + (" ✅" if flag else " " + unknown)
-
 def build_message(m):
     vs = (m["ppm"] - MARKET_PPM) / MARKET_PPM * 100
     vs_txt = f"{abs(vs):.0f}% under market" if vs <= 0 else f"{vs:.0f}% over market"
@@ -316,23 +288,19 @@ def build_message(m):
         f"Score it: {dashboard_link(m)}",
     ]
     return "\n".join(lines).replace(",", " ")
-
 # ==========================================================================
 # 8. STATE
 # ==========================================================================
 SEEN_FILE = os.environ.get("SEEN_FILE", "seen.json")
-
 def load_seen():
     try:
         with open(SEEN_FILE, encoding="utf-8") as f:
             return set(json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return set()
-
 def save_seen(ids):
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
         json.dump(list(ids)[-3000:], f, ensure_ascii=False, indent=0)
-
 # ==========================================================================
 # 9. MAIN
 # ==========================================================================
@@ -351,12 +319,19 @@ def main():
             print(f"!! Etuovi failed (Oikotie still ran): {e}")
 
     print(f"Fetched {len(items)} raw listing(s) across sources.")
+
+    # --- TEMPORARY DEBUG: show what actually came back, regardless of ---
+    # --- whether it's new/seen, so we can confirm the location filter. ---
+    # --- Safe to delete this block once Kerava-only results are confirmed. ---
+    for _it in items[:10]:
+        print(f"  DEBUG: {_it.get('source')} | city={_it.get('city')!r} | "
+              f"{_it.get('address')} | price={_it.get('price')} size={_it.get('size')}")
+
     if not items:
         print("Nothing fetched. If this repeats, re-check the Oikotie location code (README step 4).")
 
     seen = load_seen()
     first_run = len(seen) == 0
-
     matches = []
     for it in items:
         m = evaluate(it)
@@ -365,9 +340,7 @@ def main():
         if ONLY_GOOD_OR_BETTER and RANK[m["key"]] < RANK["GOOD"]:
             seen.add(m["id"]); continue
         matches.append(m)
-
     matches.sort(key=lambda x: (RANK[x["key"]], -x["ppm"]), reverse=True)
-
     if first_run:
         for m in matches:
             seen.add(m["id"])
@@ -375,17 +348,13 @@ def main():
         print(f"First run: silently recorded {len(matches)} current match(es). "
               "You'll be pinged on the NEXT new one.")
         return
-
     for m in matches:
         msg = build_message(m)
         print("NEW MATCH:\n" + msg + "\n")
         notify(msg)
         seen.add(m["id"])
         time.sleep(2)
-
     save_seen(seen)
     print(f"Done. {len(matches)} new match(es) notified.")
-
 if __name__ == "__main__":
     main()
-    
