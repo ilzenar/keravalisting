@@ -43,7 +43,7 @@ DASHBOARD_URL = os.environ.get(
     "https://claude.ai/code/artifact/dbf525b6-ca69-487e-8741-73e15c5f06f6")
 # Oikotie location selector. Confirmed via devtools: Kerava = id 137, type 6.
 # Can still be overridden with a repo Variable named OIKOTIE_LOCATIONS.
-LOCATIONS = os.environ.get("OIKOTIE_LOCATIONS", '[{"id":137,"type":6,"name":"Kerava"}]')
+LOCATIONS = os.environ.get("OIKOTIE_LOCATIONS") or '[{"id":137,"type":6,"name":"Kerava"}]'
 ENABLE_OIKOTIE = True
 ENABLE_ETUOVI  = os.environ.get("ENABLE_ETUOVI", "1") != "0"
 # ==========================================================================
